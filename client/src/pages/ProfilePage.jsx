@@ -17,7 +17,7 @@ export default function ProfilePage() {
           </div>
         </div>
         <div className="profile-summary-card">
-          <div className="profile-summary-avatar">GS</div>
+          <div className="profile-summary-avatar">AC</div>
           <div className="profile-summary-copy">
             <h3>Aditi Chandak</h3>
             <p>Owner</p>
