@@ -1,0 +1,59 @@
+CREATE TABLE IF NOT EXISTS users (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(120) NOT NULL,
+  email VARCHAR(160) NOT NULL UNIQUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS event_types (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  name VARCHAR(160) NOT NULL,
+  slug VARCHAR(160) NOT NULL UNIQUE,
+  duration_minutes INT NOT NULL,
+  description TEXT NULL,
+  location VARCHAR(160) NOT NULL DEFAULT 'Google Meet',
+  color_hex VARCHAR(20) NOT NULL DEFAULT '#006bff',
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_event_types_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS availability_settings (
+  user_id INT PRIMARY KEY,
+  timezone VARCHAR(80) NOT NULL DEFAULT 'Asia/Kolkata',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_availability_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS availability_rules (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  day_of_week TINYINT NOT NULL,
+  is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_availability_rules_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT uq_availability_day UNIQUE (user_id, day_of_week)
+);
+
+CREATE TABLE IF NOT EXISTS meetings (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  event_type_id INT NOT NULL,
+  host_user_id INT NOT NULL,
+  invitee_name VARCHAR(160) NOT NULL,
+  invitee_email VARCHAR(160) NOT NULL,
+  invitee_notes TEXT NULL,
+  start_at DATETIME NOT NULL,
+  end_at DATETIME NOT NULL,
+  status ENUM('scheduled', 'cancelled') NOT NULL DEFAULT 'scheduled',
+  cancelled_at DATETIME NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_meetings_event_type FOREIGN KEY (event_type_id) REFERENCES event_types(id) ON DELETE CASCADE,
+  CONSTRAINT fk_meetings_host FOREIGN KEY (host_user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT uq_meeting_slot UNIQUE (event_type_id, start_at)
+);
