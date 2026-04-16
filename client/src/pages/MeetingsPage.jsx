@@ -38,10 +38,10 @@ function MeetingSection({ title, meetings, onCancel, onReschedule }) {
               </div>
               {onCancel ? (
                 <div className="meeting-record-actions">
-                  <button className="button button-secondary" onClick={() => onReschedule(meeting)}>
+                  <button type="button" className="button button-secondary" onClick={() => onReschedule(meeting)}>
                     Reschedule
                   </button>
-                  <button className="button button-secondary" onClick={() => onCancel(meeting.id)}>
+                  <button type="button" className="button button-secondary" onClick={() => onCancel(meeting.id)}>
                     Cancel
                   </button>
                 </div>
@@ -92,7 +92,16 @@ export default function MeetingsPage() {
 
   const handleCancel = async (id) => {
     try {
-      await http.post(`/meetings/${id}/cancel`);
+      try {
+        await http.post(`/public/bookings/${id}/cancel`);
+      } catch (error) {
+        if (error.response?.status === 404) {
+          await http.post(`/meetings/${id}/cancel`);
+        } else {
+          throw error;
+        }
+      }
+
       setFeedback({ type: "success", message: "Meeting cancelled successfully." });
       fetchMeetings();
     } catch (error) {
@@ -101,7 +110,9 @@ export default function MeetingsPage() {
   };
 
   const handleReschedule = (meeting) => {
-    navigate(`/book/${meeting.slug}?reschedule=${meeting.id}`);
+    navigate(`/book/${meeting.slug}?reschedule=${meeting.id}`, {
+      state: { existingBooking: meeting }
+    });
   };
 
   return (

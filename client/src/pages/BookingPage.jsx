@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
@@ -11,14 +11,31 @@ dayjs.extend(timezone);
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const viewerTimezoneDefault = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
 
+const buildBookingFromState = (booking, meetingId, slug) => {
+  if (!booking) {
+    return null;
+  }
+
+  return {
+    ...booking,
+    meetingId: booking.meetingId || booking.id || Number(meetingId),
+    slug: booking.slug || slug
+  };
+};
+
 export default function BookingPage() {
   const { slug } = useParams();
+  const { state } = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const rescheduleId = searchParams.get("reschedule");
   const isRescheduling = Boolean(rescheduleId);
+  const existingBookingFromState = useMemo(
+    () => buildBookingFromState(state?.existingBooking, rescheduleId, slug),
+    [rescheduleId, slug, state?.existingBooking],
+  );
   const [eventType, setEventType] = useState(null);
-  const [existingBooking, setExistingBooking] = useState(null);
+  const [existingBooking, setExistingBooking] = useState(existingBookingFromState);
   const [month, setMonth] = useState(dayjs().format("YYYY-MM"));
   const [calendarDays, setCalendarDays] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
@@ -60,32 +77,43 @@ export default function BookingPage() {
       return;
     }
 
+    const hydrateBooking = (booking) => {
+      const normalizedBooking = buildBookingFromState(booking, rescheduleId, slug);
+      const bookingDate = dayjs(normalizedBooking.startAt);
+
+      setExistingBooking(normalizedBooking);
+      setForm({
+        inviteeName: normalizedBooking.inviteeName || "",
+        inviteeEmail: normalizedBooking.inviteeEmail || "",
+        inviteeNotes: normalizedBooking.inviteeNotes || ""
+      });
+      setMonth(bookingDate.format("YYYY-MM"));
+      setSelectedDate(bookingDate.format("YYYY-MM-DD"));
+      setSelectedSlot(dayjs(normalizedBooking.startAt).toISOString());
+    };
+
+    if (existingBookingFromState) {
+      hydrateBooking(existingBookingFromState);
+    }
+
     const loadBooking = async () => {
-      setLoadingExistingBooking(true);
+      setLoadingExistingBooking(!existingBookingFromState);
       setErrorMessage("");
 
       try {
         const { data } = await http.get(`/public/bookings/${rescheduleId}`);
-        const bookingDate = dayjs(data.startAt);
-
-        setExistingBooking(data);
-        setForm({
-          inviteeName: data.inviteeName || "",
-          inviteeEmail: data.inviteeEmail || "",
-          inviteeNotes: data.inviteeNotes || ""
-        });
-        setMonth(bookingDate.format("YYYY-MM"));
-        setSelectedDate(bookingDate.format("YYYY-MM-DD"));
-        setSelectedSlot(bookingDate.toISOString());
+        hydrateBooking(data);
       } catch (error) {
-        setErrorMessage(error.response?.data?.message || "We could not load this booking for rescheduling.");
+        if (!existingBookingFromState) {
+          setErrorMessage(error.response?.data?.message || "We could not load this booking for rescheduling.");
+        }
       } finally {
         setLoadingExistingBooking(false);
       }
     };
 
     loadBooking();
-  }, [isRescheduling, rescheduleId]);
+  }, [existingBookingFromState, isRescheduling, rescheduleId, slug]);
 
   useEffect(() => {
     if (!eventType) {
@@ -108,7 +136,7 @@ export default function BookingPage() {
           return current;
         }
 
-        if (isRescheduling && existingBooking) {
+        if (isRescheduling && existingBooking?.startAt) {
           const currentBookingDate = dayjs(existingBooking.startAt).format("YYYY-MM-DD");
           if (data.some((day) => day.date === currentBookingDate && day.availableCount > 0)) {
             return currentBookingDate;
@@ -120,7 +148,7 @@ export default function BookingPage() {
     };
 
     loadMonth();
-  }, [eventType, month, slug, rescheduleId, isRescheduling, existingBooking]);
+  }, [eventType, existingBooking, isRescheduling, month, rescheduleId, slug]);
 
   useEffect(() => {
     if (!selectedDate) {
@@ -131,6 +159,7 @@ export default function BookingPage() {
 
     const loadSlots = async () => {
       setLoadingSlots(true);
+
       try {
         const query = new URLSearchParams({ date: selectedDate });
 
@@ -140,14 +169,27 @@ export default function BookingPage() {
 
         const { data } = await http.get(`/public/event-types/${slug}/slots?${query.toString()}`);
         setSlots(data);
-        setSelectedSlot((current) => (current && data.some((slot) => slot.startAt === current) ? current : data[0]?.startAt || ""));
+        setSelectedSlot((current) => {
+          if (current && data.some((slot) => slot.startAt === current)) {
+            return current;
+          }
+
+          if (isRescheduling && existingBooking?.startAt) {
+            const originalSlot = dayjs(existingBooking.startAt).toISOString();
+            if (data.some((slot) => slot.startAt === originalSlot)) {
+              return originalSlot;
+            }
+          }
+
+          return data[0]?.startAt || "";
+        });
       } finally {
         setLoadingSlots(false);
       }
     };
 
     loadSlots();
-  }, [selectedDate, slug, rescheduleId]);
+  }, [existingBooking, isRescheduling, rescheduleId, selectedDate, slug]);
 
   const monthLabel = useMemo(() => dayjs(`${month}-01`).format("MMMM YYYY"), [month]);
   const calendarGrid = useMemo(() => {
@@ -184,9 +226,37 @@ export default function BookingPage() {
     };
 
     try {
-      const { data } = isRescheduling
-        ? await http.post(`/public/bookings/${rescheduleId}/reschedule`, payload)
-        : await http.post("/public/bookings", payload);
+      let data;
+
+      if (isRescheduling) {
+        try {
+          const response = await http.post(`/public/bookings/${rescheduleId}/reschedule`, payload);
+          data = response.data;
+        } catch (error) {
+          if (error.response?.status === 404) {
+            const createResponse = await http.post("/public/bookings", payload);
+            data = {
+              ...createResponse.data,
+              status: "rescheduled"
+            };
+
+            try {
+              await http.post(`/public/bookings/${rescheduleId}/cancel`);
+            } catch (cancelError) {
+              if (cancelError.response?.status === 404) {
+                await http.post(`/meetings/${rescheduleId}/cancel`);
+              } else {
+                throw cancelError;
+              }
+            }
+          } else {
+            throw error;
+          }
+        }
+      } else {
+        const response = await http.post("/public/bookings", payload);
+        data = response.data;
+      }
 
       navigate("/confirmation", { state: { ...data, viewerTimezone } });
     } catch (error) {
@@ -241,11 +311,11 @@ export default function BookingPage() {
 
         <div className="booking-calendar">
           <div className="calendar-header">
-            <button className="button button-icon" onClick={() => setMonth(dayjs(`${month}-01`).subtract(1, "month").format("YYYY-MM"))}>
+            <button type="button" className="button button-icon" onClick={() => setMonth(dayjs(`${month}-01`).subtract(1, "month").format("YYYY-MM"))}>
               {"<"}
             </button>
             <h2>{monthLabel}</h2>
-            <button className="button button-icon" onClick={() => setMonth(dayjs(`${month}-01`).add(1, "month").format("YYYY-MM"))}>
+            <button type="button" className="button button-icon" onClick={() => setMonth(dayjs(`${month}-01`).add(1, "month").format("YYYY-MM"))}>
               {">"}
             </button>
           </div>
@@ -261,6 +331,7 @@ export default function BookingPage() {
               ) : (
                 <button
                   key={day.date}
+                  type="button"
                   className={`date-cell ${selectedDate === day.date ? "selected" : ""}`}
                   disabled={day.availableCount === 0}
                   onClick={() => setSelectedDate(day.date)}
@@ -291,6 +362,7 @@ export default function BookingPage() {
               {slots.map((slot) => (
                 <button
                   key={slot.startAt}
+                  type="button"
                   className={`slot-chip ${selectedSlot === slot.startAt ? "selected" : ""}`}
                   onClick={() => setSelectedSlot(slot.startAt)}
                 >

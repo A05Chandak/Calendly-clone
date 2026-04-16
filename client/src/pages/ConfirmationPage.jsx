@@ -28,7 +28,16 @@ export default function ConfirmationPage() {
     setFeedback("");
 
     try {
-      await http.post(`/public/bookings/${state.meetingId}/cancel`);
+      try {
+        await http.post(`/public/bookings/${state.meetingId}/cancel`);
+      } catch (error) {
+        if (error.response?.status === 404) {
+          await http.post(`/meetings/${state.meetingId}/cancel`);
+        } else {
+          throw error;
+        }
+      }
+
       setFeedback("Meeting cancelled successfully.");
       setMeetingStatus("cancelled");
     } catch (error) {
@@ -44,7 +53,9 @@ export default function ConfirmationPage() {
       return;
     }
 
-    navigate(`/book/${state.slug}?reschedule=${state.meetingId}`);
+    navigate(`/book/${state.slug}?reschedule=${state.meetingId}`, {
+      state: { existingBooking: state }
+    });
   };
 
   return (
