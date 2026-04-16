@@ -1,14 +1,71 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import EventTypeForm from "../components/EventTypeForm";
 import http from "../api/http";
 
-const dashboardTabs = ["Event types", "Single-use links", "Meeting polls"];
+const dashboardTabs = [
+  { key: "event-types", label: "Event types" },
+  { key: "single-use-links", label: "Single-use links" },
+  { key: "meeting-polls", label: "Meeting polls" }
+];
+
 const getErrorMessage = (error, fallback) => error.response?.data?.message || fallback;
 
+function SingleUseLinksPage() {
+  return (
+    <section className="panel tab-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Single-use links</p>
+          <h2>Private booking links</h2>
+          <p className="panel-subcopy">Create one-off links for special meetings, fast intros, or invite-only booking flows.</p>
+        </div>
+      </div>
+
+      <div className="single-use-grid">
+        <article className="empty-state">
+          <h3>VIP intro link</h3>
+          <p>Share a private booking link with one client or lead without exposing it on your public page.</p>
+        </article>
+        <article className="empty-state">
+          <h3>Interview slot</h3>
+          <p>Send a temporary slot link for a specific candidate, mentor session, or one-time follow-up.</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function MeetingPollsPage() {
+  return (
+    <section className="panel tab-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Meeting polls</p>
+          <h2>Group scheduling polls</h2>
+          <p className="panel-subcopy">Collect time preferences from multiple people before locking the final meeting slot.</p>
+        </div>
+      </div>
+
+      <div className="single-use-grid">
+        <article className="empty-state">
+          <h3>Design review poll</h3>
+          <p>Ask teammates to vote on the best time for a larger design review or planning discussion.</p>
+        </article>
+        <article className="empty-state">
+          <h3>Client sync poll</h3>
+          <p>Share a shortlist of time options and confirm the slot that works best for everyone involved.</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const formRef = useRef(null);
+  const tabContentRef = useRef(null);
   const [events, setEvents] = useState([]);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -16,6 +73,8 @@ export default function DashboardPage() {
   const [feedback, setFeedback] = useState({ type: "", message: "" });
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+
+  const activeTab = searchParams.get("tab") || "event-types";
 
   const fetchEvents = async () => {
     setLoading(true);
@@ -37,9 +96,19 @@ export default function DashboardPage() {
     if (searchParams.has("new")) {
       setSelectedEvent(null);
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setSearchParams({}, { replace: true });
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current);
+        next.delete("new");
+        return next;
+      }, { replace: true });
     }
   }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (activeTab !== "event-types") {
+      tabContentRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [activeTab]);
 
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
@@ -74,6 +143,7 @@ export default function DashboardPage() {
 
       setSelectedEvent(null);
       await fetchEvents();
+      formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     } catch (error) {
       setFeedback({ type: "error", message: getErrorMessage(error, "We could not save this event type.") });
     } finally {
@@ -103,25 +173,26 @@ export default function DashboardPage() {
     }
   };
 
-  return (
-    <div className="page-stack">
-      <section className="scheduling-header">
-        <p className="hero-copy">Manage event types, booking links, and the workspace flow from one place.</p>
-      </section>
+  const handleEdit = (event) => {
+    setSelectedEvent(event);
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
-      <div className="tab-row">
-        {dashboardTabs.map((tab, index) => (
-          <button key={tab} type="button" className={`tab-button ${index === 0 ? "active" : ""}`}>
-            {tab}
-          </button>
-        ))}
-      </div>
+  const handleTabChange = (tabKey) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("tab", tabKey);
+      return next;
+    }, { replace: true });
+  };
 
+  const renderEventTypes = () => (
+    <>
       <section className="toolbar-card">
         <div className="toolbar-row">
           <button type="button" className="toolbar-pill">My Calendly</button>
           <div className="toolbar-search">
-            <span>⌕</span>
+            <span>Search</span>
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
@@ -138,16 +209,16 @@ export default function DashboardPage() {
 
       {feedback.message ? <p className={`feedback-banner ${feedback.type}`}>{feedback.message}</p> : null}
 
-      <section className="dashboard-layout">
+      <section className="dashboard-layout" ref={tabContentRef}>
         <section className="scheduling-column">
           <div className="workspace-owner-row">
             <div className="owner-chip">
               <span className="mini-avatar owner-avatar">AC</span>
               <strong>Aditi Chandak</strong>
             </div>
-            <a href="/" onClick={(event) => event.preventDefault()} className="landing-link">
-              View landing page
-            </a>
+            <button type="button" className="landing-link landing-link-button" onClick={() => navigate("/profile")}>
+              View profile
+            </button>
           </div>
 
           {loading ? <div className="empty-state"><p>Loading event types...</p></div> : null}
@@ -167,20 +238,20 @@ export default function DashboardPage() {
                   <div className="event-type-main">
                     <div className="event-type-summary">
                       <h3>{event.name}</h3>
-                      <p>{event.durationMinutes} min • {event.location} • One-on-One</p>
+                      <p>{event.durationMinutes} min · {event.location} · One-on-One</p>
                       <p>{event.isActive ? "Public booking is enabled" : "Hidden from booking page"}</p>
                     </div>
                     <div className="event-type-actions">
                       <button className="button button-secondary" onClick={() => handleCopyLink(event.slug)} disabled={!event.isActive}>
                         Copy link
                       </button>
-                      <button className="icon-action" type="button" onClick={() => setSelectedEvent(event)}>
+                      <button className="icon-action" type="button" onClick={() => handleEdit(event)}>
                         Edit
                       </button>
                       <button
                         className="icon-action"
                         type="button"
-                        onClick={() => window.open(`/book/${event.slug}`, "_blank", "noopener,noreferrer")}
+                        onClick={() => navigate(`/book/${event.slug}`)}
                         disabled={!event.isActive}
                       >
                         View
@@ -196,7 +267,7 @@ export default function DashboardPage() {
           ) : null}
 
           <div className="info-banner">
-            <span>📣</span>
+            <span>Info</span>
             <p>
               You have <strong>{activeEvents}</strong> active event types ready for sharing.
             </p>
@@ -212,6 +283,31 @@ export default function DashboardPage() {
           />
         </aside>
       </section>
+    </>
+  );
+
+  return (
+    <div className="page-stack">
+      <section className="scheduling-header">
+        <p className="hero-copy">Manage event types, booking links, and the workspace flow from one place.</p>
+      </section>
+
+      <div className="tab-row">
+        {dashboardTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            className={`tab-button ${activeTab === tab.key ? "active" : ""}`}
+            onClick={() => handleTabChange(tab.key)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "event-types" ? renderEventTypes() : null}
+      {activeTab === "single-use-links" ? <SingleUseLinksPage /> : null}
+      {activeTab === "meeting-polls" ? <MeetingPollsPage /> : null}
     </div>
   );
 }
