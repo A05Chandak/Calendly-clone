@@ -28,6 +28,7 @@ A full-stack scheduling platform built for the Scaler SDE Intern full-stack assi
 - `server/`: Express API and MySQL setup scripts
 - `server/sql/schema.sql`: database schema
 - `server/sql/seed.sql`: sample data
+- `DEPLOYMENT.md`: production deployment guide for frontend, backend, and MySQL
 
 ## Setup
 

@@ -2,10 +2,7 @@ export default function IntegrationsPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Integrations & apps</h1>
-          <p className="hero-copy">Connect video, calendar, CRM, and automation tools from one place.</p>
-        </div>
+        <p className="hero-copy">Connect video, calendar, CRM, and automation tools from one place.</p>
       </section>
 
       <section className="stats-row">

@@ -2,10 +2,7 @@ export default function ProfilePage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Profile</h1>
-          <p className="hero-copy">A basic profile page for personal details, booking preferences, and workspace identity.</p>
-        </div>
+        <p className="hero-copy">A basic profile page for personal details, booking preferences, and workspace identity.</p>
       </section>
 
       <section className="panel">

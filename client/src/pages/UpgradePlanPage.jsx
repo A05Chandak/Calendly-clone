@@ -2,10 +2,7 @@ export default function UpgradePlanPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Upgrade plan</h1>
-          <p className="hero-copy">A dummy upgrade page for premium features, advanced scheduling, and team capabilities.</p>
-        </div>
+        <p className="hero-copy">A dummy upgrade page for premium features, advanced scheduling, and team capabilities.</p>
       </section>
 
       <section className="stats-row">

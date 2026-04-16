@@ -2,10 +2,7 @@ export default function AdminCenterPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Admin center</h1>
-          <p className="hero-copy">A simple admin area for workspace settings, permissions, and management controls.</p>
-        </div>
+        <p className="hero-copy">A simple admin area for workspace settings, permissions, and management controls.</p>
       </section>
 
       <section className="panel">

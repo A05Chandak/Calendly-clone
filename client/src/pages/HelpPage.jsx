@@ -2,10 +2,7 @@ export default function HelpPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Help</h1>
-          <p className="hero-copy">A simple help page for setup guidance, FAQs, and support resources.</p>
-        </div>
+        <p className="hero-copy">A simple help page for setup guidance, FAQs, and support resources.</p>
       </section>
 
       <section className="panel">

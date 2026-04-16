@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
@@ -14,7 +14,11 @@ const viewerTimezoneDefault = Intl.DateTimeFormat().resolvedOptions().timeZone |
 export default function BookingPage() {
   const { slug } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const rescheduleId = searchParams.get("reschedule");
+  const isRescheduling = Boolean(rescheduleId);
   const [eventType, setEventType] = useState(null);
+  const [existingBooking, setExistingBooking] = useState(null);
   const [month, setMonth] = useState(dayjs().format("YYYY-MM"));
   const [calendarDays, setCalendarDays] = useState([]);
   const [selectedDate, setSelectedDate] = useState("");
@@ -22,6 +26,7 @@ export default function BookingPage() {
   const [selectedSlot, setSelectedSlot] = useState("");
   const [viewerTimezone, setViewerTimezone] = useState(viewerTimezoneDefault);
   const [loadingEvent, setLoadingEvent] = useState(true);
+  const [loadingExistingBooking, setLoadingExistingBooking] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -50,12 +55,51 @@ export default function BookingPage() {
   }, [slug]);
 
   useEffect(() => {
+    if (!isRescheduling) {
+      setExistingBooking(null);
+      return;
+    }
+
+    const loadBooking = async () => {
+      setLoadingExistingBooking(true);
+      setErrorMessage("");
+
+      try {
+        const { data } = await http.get(`/public/bookings/${rescheduleId}`);
+        const bookingDate = dayjs(data.startAt);
+
+        setExistingBooking(data);
+        setForm({
+          inviteeName: data.inviteeName || "",
+          inviteeEmail: data.inviteeEmail || "",
+          inviteeNotes: data.inviteeNotes || ""
+        });
+        setMonth(bookingDate.format("YYYY-MM"));
+        setSelectedDate(bookingDate.format("YYYY-MM-DD"));
+        setSelectedSlot(bookingDate.toISOString());
+      } catch (error) {
+        setErrorMessage(error.response?.data?.message || "We could not load this booking for rescheduling.");
+      } finally {
+        setLoadingExistingBooking(false);
+      }
+    };
+
+    loadBooking();
+  }, [isRescheduling, rescheduleId]);
+
+  useEffect(() => {
     if (!eventType) {
       return;
     }
 
     const loadMonth = async () => {
-      const { data } = await http.get(`/public/event-types/${slug}/calendar?month=${month}`);
+      const query = new URLSearchParams({ month });
+
+      if (rescheduleId) {
+        query.set("excludeMeetingId", rescheduleId);
+      }
+
+      const { data } = await http.get(`/public/event-types/${slug}/calendar?${query.toString()}`);
       setCalendarDays(data);
       const firstAvailable = data.find((day) => day.availableCount > 0);
 
@@ -64,12 +108,19 @@ export default function BookingPage() {
           return current;
         }
 
+        if (isRescheduling && existingBooking) {
+          const currentBookingDate = dayjs(existingBooking.startAt).format("YYYY-MM-DD");
+          if (data.some((day) => day.date === currentBookingDate && day.availableCount > 0)) {
+            return currentBookingDate;
+          }
+        }
+
         return firstAvailable?.date || "";
       });
     };
 
     loadMonth();
-  }, [eventType, month, slug]);
+  }, [eventType, month, slug, rescheduleId, isRescheduling, existingBooking]);
 
   useEffect(() => {
     if (!selectedDate) {
@@ -81,7 +132,13 @@ export default function BookingPage() {
     const loadSlots = async () => {
       setLoadingSlots(true);
       try {
-        const { data } = await http.get(`/public/event-types/${slug}/slots?date=${selectedDate}`);
+        const query = new URLSearchParams({ date: selectedDate });
+
+        if (rescheduleId) {
+          query.set("excludeMeetingId", rescheduleId);
+        }
+
+        const { data } = await http.get(`/public/event-types/${slug}/slots?${query.toString()}`);
         setSlots(data);
         setSelectedSlot((current) => (current && data.some((slot) => slot.startAt === current) ? current : data[0]?.startAt || ""));
       } finally {
@@ -90,7 +147,7 @@ export default function BookingPage() {
     };
 
     loadSlots();
-  }, [selectedDate, slug]);
+  }, [selectedDate, slug, rescheduleId]);
 
   const monthLabel = useMemo(() => dayjs(`${month}-01`).format("MMMM YYYY"), [month]);
   const calendarGrid = useMemo(() => {
@@ -117,15 +174,19 @@ export default function BookingPage() {
     setSubmitting(true);
     setErrorMessage("");
 
+    const payload = {
+      slug,
+      date: selectedDate,
+      startAt: selectedSlot,
+      inviteeName: form.inviteeName,
+      inviteeEmail: form.inviteeEmail,
+      inviteeNotes: form.inviteeNotes
+    };
+
     try {
-      const { data } = await http.post("/public/bookings", {
-        slug,
-        date: selectedDate,
-        startAt: selectedSlot,
-        inviteeName: form.inviteeName,
-        inviteeEmail: form.inviteeEmail,
-        inviteeNotes: form.inviteeNotes
-      });
+      const { data } = isRescheduling
+        ? await http.post(`/public/bookings/${rescheduleId}/reschedule`, payload)
+        : await http.post("/public/bookings", payload);
 
       navigate("/confirmation", { state: { ...data, viewerTimezone } });
     } catch (error) {
@@ -135,11 +196,11 @@ export default function BookingPage() {
     }
   };
 
-  if (loadingEvent) {
+  if (loadingEvent || loadingExistingBooking) {
     return (
       <div className="booking-shell">
         <section className="booking-card booking-card-loading">
-          <p>Loading booking page...</p>
+          <p>{isRescheduling ? "Loading meeting details..." : "Loading booking page..."}</p>
         </section>
       </div>
     );
@@ -159,7 +220,7 @@ export default function BookingPage() {
     <div className="booking-shell">
       <section className="booking-card">
         <div className="booking-summary">
-          <p className="eyebrow">Calendly</p>
+          <p className="eyebrow">{isRescheduling ? "Reschedule meeting" : "Calendly"}</p>
           <div className="booking-host">
             <span className="booking-event-dot" style={{ backgroundColor: eventType?.colorHex || "#006bff" }} />
             <span>{eventType?.hostName}</span>
@@ -170,7 +231,7 @@ export default function BookingPage() {
             <li>{eventType?.location}</li>
             <li>Host timezone: {eventType?.timezone}</li>
           </ul>
-          <p>{eventType?.description}</p>
+          <p>{isRescheduling ? "Pick a new time and update any invitee details if needed." : eventType?.description}</p>
           <div className="booking-steps">
             <span className={selectedDate ? "active" : ""}>1. Select a date</span>
             <span className={selectedSlot ? "active" : ""}>2. Pick a time</span>
@@ -240,7 +301,7 @@ export default function BookingPage() {
           </div>
 
           <form className="booking-form" onSubmit={handleBooking}>
-            <h2>Enter details</h2>
+            <h2>{isRescheduling ? "Update booking details" : "Enter details"}</h2>
             {selectedSlotDetails ? (
               <p className="booking-selected-time">
                 {dayjs(selectedSlotDetails.startAt).tz(viewerTimezone).format("dddd, MMMM D · h:mm A")} ({viewerTimezone})
@@ -274,7 +335,7 @@ export default function BookingPage() {
             </label>
             {errorMessage ? <p className="form-error">{errorMessage}</p> : null}
             <button className="button" type="submit" disabled={!selectedSlot || submitting}>
-              {submitting ? "Confirming..." : "Confirm"}
+              {submitting ? (isRescheduling ? "Rescheduling..." : "Confirming...") : isRescheduling ? "Reschedule meeting" : "Confirm"}
             </button>
           </form>
         </div>

@@ -17,27 +17,52 @@ import ConfirmationPage from "./pages/ConfirmationPage";
 import http from "./api/http";
 
 const primaryNavItems = [
-  { to: "/", label: "Scheduling", icon: "↗", end: true },
-  { to: "/meetings", label: "Meetings", icon: "◫" },
-  { to: "/availability", label: "Availability", icon: "◔" }
+  { to: "/", label: "Scheduling", icon: "->", end: true },
+  { to: "/meetings", label: "Meetings", icon: "[]" },
+  { to: "/availability", label: "Availability", icon: "o" }
 ];
 
 const secondaryNavItems = [
-  { to: "/contacts", label: "Contacts", icon: "⊡" },
-  { to: "/workflows", label: "Workflows", icon: "⇄" },
-  { to: "/integrations", label: "Integrations & apps", icon: "⌘" },
-  { to: "/routing", label: "Routing", icon: "⇢" },
-  { to: "/analytics", label: "Analytics", icon: "▣" },
-  { to: "/admin-center", label: "Admin center", icon: "♛" },
+  { to: "/contacts", label: "Contacts", icon: "*" },
+  { to: "/workflows", label: "Workflows", icon: "<>" },
+  { to: "/integrations", label: "Integrations & apps", icon: "+" },
+  { to: "/routing", label: "Routing", icon: "=>" },
+  { to: "/analytics", label: "Analytics", icon: "#" },
+  { to: "/admin-center", label: "Admin center", icon: "^" },
   { to: "/help", label: "Help", icon: "?" }
 ];
 
 const onboardingItems = [
-  { title: "Get to know Calendly", subtitle: "1 video", icon: "◌" },
-  { title: "Add team members", subtitle: "Invite collaborators", icon: "✓" },
-  { title: "Using Calendly with a team", subtitle: "1 / 2 tasks", icon: "✦" },
-  { title: "The perfect scheduling setup", subtitle: "2 tasks", icon: "☷" },
-  { title: "Automate meeting prep and follow-up", subtitle: "2 tasks", icon: "✉" }
+  {
+    title: "Get to know Calendly",
+    subtitle: "1 video",
+    description: "Start with a quick overview of the workspace so the main scheduling flow, booking links, and settings feel familiar.",
+    icon: "o"
+  },
+  {
+    title: "Add team members",
+    subtitle: "Invite collaborators",
+    description: "Bring teammates into the workspace so ownership, coverage, and shared scheduling can grow beyond a single host.",
+    icon: "+"
+  },
+  {
+    title: "Using Calendly with a team",
+    subtitle: "1 / 2 tasks",
+    description: "Set up shared habits for booking, event ownership, and follow-through so the team experience stays organized.",
+    icon: "*"
+  },
+  {
+    title: "The perfect scheduling setup",
+    subtitle: "2 tasks",
+    description: "Fine-tune event types, availability, and booking rules so invitees move through a clean and reliable flow.",
+    icon: "@"
+  },
+  {
+    title: "Automate meeting prep and follow-up",
+    subtitle: "2 tasks",
+    description: "Use reminders and follow-ups to reduce manual work before meetings and keep momentum after each conversation.",
+    icon: "M"
+  }
 ];
 
 const pageTitleMap = {
@@ -60,6 +85,8 @@ function AppShell() {
   const location = useLocation();
   const [health, setHealth] = useState({ status: "checking", database: "unknown" });
   const [isRailOpen, setIsRailOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [expandedOnboardingItem, setExpandedOnboardingItem] = useState(onboardingItems[0].title);
 
   useEffect(() => {
     const loadHealth = async () => {
@@ -74,21 +101,42 @@ function AppShell() {
     loadHealth();
   }, []);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setIsSidebarOpen(false);
+  }, [location.pathname, location.search]);
+
   const pageTitle = pageTitleMap[location.pathname] || "Scheduling";
+  const handleCreate = () => navigate(`/?new=${Date.now()}`);
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
+    <div className={`app-shell ${isSidebarOpen ? "sidebar-open" : ""}`}>
+      <button
+        type="button"
+        className="sidebar-backdrop"
+        aria-label="Close navigation"
+        onClick={() => setIsSidebarOpen(false)}
+      />
+
+      <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
         <div className="brand-lockup">
           <div className="brand-ring">
-            <div className="brand-ring-inner">C</div>
+            <div className="brand-ring-inner">AC</div>
           </div>
           <div className="brand-copy">
             <h1>Calendly</h1>
           </div>
+          <button
+            type="button"
+            className="sidebar-close-mobile"
+            aria-label="Close navigation"
+            onClick={() => setIsSidebarOpen(false)}
+          >
+            x
+          </button>
         </div>
 
-        <button className="create-button" onClick={() => navigate("/?new=1")}>
+        <button className="create-button" onClick={handleCreate}>
           <span>+</span>
           Create
         </button>
@@ -136,9 +184,21 @@ function AppShell() {
       <main className={`workspace-shell ${isRailOpen ? "rail-open" : "rail-closed"}`}>
         <section className="page-shell">
           <header className="topbar">
-            <div>
-              <p className="topbar-label">My Calendly</p>
-              <h2>{pageTitle}</h2>
+            <div className="topbar-main">
+              <button
+                className="mobile-nav-toggle"
+                type="button"
+                aria-label="Open navigation"
+                onClick={() => setIsSidebarOpen(true)}
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+              <div>
+                <p className="topbar-label">My Calendly</p>
+                <h2>{pageTitle}</h2>
+              </div>
             </div>
 
             <div className="topbar-actions">
@@ -146,10 +206,10 @@ function AppShell() {
                 {health.database === "connected" ? "MySQL connected" : "MySQL disconnected"}
               </span>
               <button className="profile-chip" type="button" onClick={() => navigate("/profile")}>
-                <span className="profile-avatar">A</span>
+                <span className="profile-avatar">AC</span>
                 <span>Workspace</span>
               </button>
-              <button className="button" onClick={() => navigate("/?new=1")}>+ Create</button>
+              <button className="button" onClick={handleCreate}>+ Create</button>
             </div>
           </header>
 
@@ -173,16 +233,32 @@ function AppShell() {
           <aside className="right-rail">
             <div className="rail-header">
               <h3>Get started</h3>
-              <button type="button" className="rail-close" onClick={() => setIsRailOpen(false)}>×</button>
+              <button type="button" className="rail-close" onClick={() => setIsRailOpen(false)}>x</button>
             </div>
             <div className="rail-list">
               {onboardingItems.map((item) => (
                 <article key={item.title} className="rail-card">
-                  <div className="rail-icon">{item.icon}</div>
-                  <div>
-                    <h4>{item.title}</h4>
-                    <p>{item.subtitle}</p>
-                  </div>
+                  <button
+                    type="button"
+                    className="rail-toggle"
+                    onClick={() =>
+                      setExpandedOnboardingItem((current) => (current === item.title ? "" : item.title))
+                    }
+                  >
+                    <div className="rail-toggle-main">
+                      <div className="rail-icon">{item.icon}</div>
+                      <h4>{item.title}</h4>
+                    </div>
+                    <span className={`rail-toggle-indicator ${expandedOnboardingItem === item.title ? "open" : ""}`}>
+                      +
+                    </span>
+                  </button>
+                  {expandedOnboardingItem === item.title ? (
+                    <div className="rail-card-body">
+                      <p>{item.subtitle}</p>
+                      <p className="rail-description">{item.description}</p>
+                    </div>
+                  ) : null}
                 </article>
               ))}
             </div>

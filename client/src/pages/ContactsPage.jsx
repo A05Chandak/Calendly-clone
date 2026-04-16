@@ -2,10 +2,7 @@ export default function ContactsPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Contacts</h1>
-          <p className="hero-copy">A basic contacts page for invitees, leads, and people you meet with regularly.</p>
-        </div>
+        <p className="hero-copy">A basic contacts page for invitees, leads, and people you meet with regularly.</p>
       </section>
 
       <section className="panel">

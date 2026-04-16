@@ -2,10 +2,7 @@ export default function WorkflowsPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Workflows</h1>
-          <p className="hero-copy">A simple workflows area for reminders, follow-ups, and booking automation.</p>
-        </div>
+        <p className="hero-copy">A simple workflows area for reminders, follow-ups, and booking automation.</p>
       </section>
 
       <section className="panel">

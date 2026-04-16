@@ -2,10 +2,7 @@ export default function AnalyticsPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Analytics</h1>
-          <p className="hero-copy">Basic reporting page for tracking bookings, activity, and cancelled meetings.</p>
-        </div>
+        <p className="hero-copy">Basic reporting page for tracking bookings, activity, and cancelled meetings.</p>
       </section>
 
       <section className="stats-row">

@@ -34,10 +34,10 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (searchParams.get("new") === "1") {
+    if (searchParams.has("new")) {
       setSelectedEvent(null);
       formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      setSearchParams({});
+      setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
 
@@ -106,12 +106,7 @@ export default function DashboardPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Scheduling</h1>
-        </div>
-        <button className="button" onClick={() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-          + Create
-        </button>
+        <p className="hero-copy">Manage event types, booking links, and the workspace flow from one place.</p>
       </section>
 
       <div className="tab-row">
@@ -147,7 +142,7 @@ export default function DashboardPage() {
         <section className="scheduling-column">
           <div className="workspace-owner-row">
             <div className="owner-chip">
-              <span className="mini-avatar owner-avatar">A</span>
+              <span className="mini-avatar owner-avatar">AC</span>
               <strong>Aditi Chandak</strong>
             </div>
             <a href="/" onClick={(event) => event.preventDefault()} className="landing-link">

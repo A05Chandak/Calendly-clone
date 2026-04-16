@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import dayjs from "dayjs";
 import http from "../api/http";
 
 const getErrorMessage = (error, fallback) => error.response?.data?.message || fallback;
 
-function MeetingSection({ title, meetings, onCancel }) {
+function MeetingSection({ title, meetings, onCancel, onReschedule }) {
   return (
     <section className="panel">
       <div className="panel-heading">
@@ -36,9 +37,14 @@ function MeetingSection({ title, meetings, onCancel }) {
                 </div>
               </div>
               {onCancel ? (
-                <button className="button button-secondary" onClick={() => onCancel(meeting.id)}>
-                  Cancel
-                </button>
+                <div className="meeting-record-actions">
+                  <button className="button button-secondary" onClick={() => onReschedule(meeting)}>
+                    Reschedule
+                  </button>
+                  <button className="button button-secondary" onClick={() => onCancel(meeting.id)}>
+                    Cancel
+                  </button>
+                </div>
               ) : null}
             </article>
           ))
@@ -49,6 +55,7 @@ function MeetingSection({ title, meetings, onCancel }) {
 }
 
 export default function MeetingsPage() {
+  const navigate = useNavigate();
   const [upcoming, setUpcoming] = useState([]);
   const [past, setPast] = useState([]);
   const [cancelled, setCancelled] = useState([]);
@@ -93,13 +100,14 @@ export default function MeetingsPage() {
     }
   };
 
+  const handleReschedule = (meeting) => {
+    navigate(`/book/${meeting.slug}?reschedule=${meeting.id}`);
+  };
+
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Meetings</h1>
-          <p className="hero-copy">Review upcoming, completed, and cancelled meetings in one place.</p>
-        </div>
+        <p className="hero-copy">Review upcoming, completed, and cancelled meetings in one place.</p>
       </section>
 
       <section className="stats-row">
@@ -119,7 +127,7 @@ export default function MeetingsPage() {
 
       {feedback.message ? <p className={`feedback-banner ${feedback.type}`}>{feedback.message}</p> : null}
 
-      <MeetingSection title="Upcoming" meetings={upcoming} onCancel={handleCancel} />
+      <MeetingSection title="Upcoming" meetings={upcoming} onCancel={handleCancel} onReschedule={handleReschedule} />
       <MeetingSection title="Past" meetings={past} />
       <MeetingSection title="Cancelled" meetings={cancelled} />
     </div>

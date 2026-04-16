@@ -50,10 +50,7 @@ export default function AvailabilityPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Availability</h1>
-          <p className="hero-copy">Control the days and times people can book with you.</p>
-        </div>
+        <p className="hero-copy">Control the days and times people can book with you.</p>
         <button className="button" onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save availability"}
         </button>

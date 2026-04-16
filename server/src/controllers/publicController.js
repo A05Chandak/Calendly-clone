@@ -8,6 +8,8 @@ import { createHttpError } from "../utils/http.js";
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
 const getEventTypeWithAvailability = async (slug) => {
   const [eventType] = await query(
     `SELECT
@@ -28,11 +30,7 @@ const getEventTypeWithAvailability = async (slug) => {
     [slug],
   );
 
-  if (!eventType) {
-    return null;
-  }
-
-  if (!eventType.isActive) {
+  if (!eventType || !eventType.isActive) {
     return null;
   }
 
@@ -49,7 +47,38 @@ const getEventTypeWithAvailability = async (slug) => {
   return { eventType, availabilityRules };
 };
 
-const getBookedSlotsForMonth = async (eventTypeId, month) => {
+const getMeetingDetails = async (meetingId) => {
+  const [meeting] = await query(
+    `SELECT
+        meetings.id,
+        meetings.event_type_id AS eventTypeId,
+        meetings.host_user_id AS hostUserId,
+        meetings.invitee_name AS inviteeName,
+        meetings.invitee_email AS inviteeEmail,
+        meetings.invitee_notes AS inviteeNotes,
+        meetings.start_at AS startAt,
+        meetings.end_at AS endAt,
+        meetings.status,
+        event_types.name AS eventName,
+        event_types.slug,
+        event_types.duration_minutes AS durationMinutes,
+        event_types.location,
+        event_types.color_hex AS colorHex,
+        users.name AS hostName,
+        availability_settings.timezone
+     FROM meetings
+     INNER JOIN event_types ON event_types.id = meetings.event_type_id
+     INNER JOIN users ON users.id = meetings.host_user_id
+     INNER JOIN availability_settings ON availability_settings.user_id = meetings.host_user_id
+     WHERE meetings.id = ?
+     LIMIT 1`,
+    [meetingId],
+  );
+
+  return meeting || null;
+};
+
+const getBookedSlotsForMonth = async (eventTypeId, month, excludeMeetingId = null) => {
   const start = `${month}-01`;
   const end = dayjs(start).endOf("month").format("YYYY-MM-DD");
   const rows = await query(
@@ -57,10 +86,53 @@ const getBookedSlotsForMonth = async (eventTypeId, month) => {
      FROM meetings
      WHERE event_type_id = ?
        AND status <> 'cancelled'
+       AND (? IS NULL OR id <> ?)
        AND DATE(start_at) BETWEEN ? AND ?`,
-    [eventTypeId, start, end],
+    [eventTypeId, excludeMeetingId, excludeMeetingId, start, end],
   );
   return rows.map((row) => row.startAt);
+};
+
+const getBookedSlotsForDate = async (eventTypeId, date, excludeMeetingId = null) => {
+  const rows = await query(
+    `SELECT DATE_FORMAT(start_at, '%Y-%m-%d %H:%i:%s') AS startAt
+     FROM meetings
+     WHERE event_type_id = ?
+       AND status <> 'cancelled'
+       AND (? IS NULL OR id <> ?)
+       AND DATE(start_at) = ?`,
+    [eventTypeId, excludeMeetingId, excludeMeetingId, date],
+  );
+
+  return rows.map((row) => row.startAt);
+};
+
+const buildBookingResponse = (meeting, overrides = {}) => ({
+  meetingId: meeting.id,
+  eventName: meeting.eventName,
+  hostName: meeting.hostName,
+  location: meeting.location,
+  timezone: meeting.timezone,
+  inviteeName: meeting.inviteeName,
+  inviteeEmail: meeting.inviteeEmail,
+  inviteeNotes: meeting.inviteeNotes || "",
+  slug: meeting.slug,
+  startAt: overrides.startAt || dayjs.utc(meeting.startAt).toISOString(),
+  status: overrides.status || meeting.status || "scheduled"
+});
+
+const validateBookingInput = ({ slug, date, startAt, inviteeName, inviteeEmail }) => {
+  if (!slug || !date || !startAt || !inviteeName?.trim() || !inviteeEmail?.trim()) {
+    throw createHttpError(400, "Name, email, date, event, and time are required.");
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw createHttpError(400, "Date must use YYYY-MM-DD format.");
+  }
+
+  if (!isValidEmail(inviteeEmail)) {
+    throw createHttpError(400, "Please enter a valid email address.");
+  }
 };
 
 export const getPublicEventType = async (req, res, next) => {
@@ -78,6 +150,8 @@ export const getPublicEventType = async (req, res, next) => {
 export const getMonthSlots = async (req, res, next) => {
   try {
     const month = req.query.month || dayjs().format("YYYY-MM");
+    const excludeMeetingId = req.query.excludeMeetingId ? Number(req.query.excludeMeetingId) : null;
+
     if (!/^\d{4}-\d{2}$/.test(month)) {
       throw createHttpError(400, "Month must use YYYY-MM format.");
     }
@@ -87,7 +161,7 @@ export const getMonthSlots = async (req, res, next) => {
       return res.status(404).json({ message: "Event type not found" });
     }
 
-    const bookedSlots = await getBookedSlotsForMonth(data.eventType.id, month);
+    const bookedSlots = await getBookedSlotsForMonth(data.eventType.id, month, excludeMeetingId);
     const days = buildMonthAvailability({
       month,
       timezone: data.eventType.timezone,
@@ -105,6 +179,8 @@ export const getMonthSlots = async (req, res, next) => {
 export const getDateSlots = async (req, res, next) => {
   try {
     const date = req.query.date;
+    const excludeMeetingId = req.query.excludeMeetingId ? Number(req.query.excludeMeetingId) : null;
+
     if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       throw createHttpError(400, "Date must use YYYY-MM-DD format.");
     }
@@ -114,24 +190,30 @@ export const getDateSlots = async (req, res, next) => {
       return res.status(404).json({ message: "Event type not found" });
     }
 
-    const rows = await query(
-      `SELECT DATE_FORMAT(start_at, '%Y-%m-%d %H:%i:%s') AS startAt
-       FROM meetings
-       WHERE event_type_id = ?
-         AND status <> 'cancelled'
-         AND DATE(start_at) = ?`,
-      [data.eventType.id, date],
-    );
-
+    const bookedSlots = await getBookedSlotsForDate(data.eventType.id, date, excludeMeetingId);
     const slots = createSlotsForDate({
       date,
       timezone: data.eventType.timezone,
       durationMinutes: data.eventType.durationMinutes,
       availabilityRules: data.availabilityRules,
-      bookedSlots: rows.map((row) => row.startAt)
+      bookedSlots
     });
 
     res.json(slots);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getPublicBooking = async (req, res, next) => {
+  try {
+    const meeting = await getMeetingDetails(req.params.id);
+
+    if (!meeting || meeting.status === "cancelled") {
+      throw createHttpError(404, "Booking not found.");
+    }
+
+    res.json(buildBookingResponse(meeting));
   } catch (error) {
     next(error);
   }
@@ -143,26 +225,12 @@ export const createBooking = async (req, res, next) => {
 
   try {
     const { slug, date, startAt, inviteeName, inviteeEmail, inviteeNotes } = req.body;
-    if (!slug || !date || !startAt || !inviteeName?.trim() || !inviteeEmail?.trim()) {
-      connection.release();
-      return next(createHttpError(400, "Name, email, date, event, and time are required."));
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      connection.release();
-      return next(createHttpError(400, "Date must use YYYY-MM-DD format."));
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inviteeEmail.trim())) {
-      connection.release();
-      return next(createHttpError(400, "Please enter a valid email address."));
-    }
+    validateBookingInput({ slug, date, startAt, inviteeName, inviteeEmail });
 
     const data = await getEventTypeWithAvailability(slug);
 
     if (!data) {
-      connection.release();
-      return res.status(404).json({ message: "Event type not found" });
+      throw createHttpError(404, "Event type not found");
     }
 
     const slotDate = dayjs(startAt).tz(data.eventType.timezone);
@@ -177,8 +245,7 @@ export const createBooking = async (req, res, next) => {
     const selectedSlot = validSlots.find((slot) => slot.startAt === startAt);
 
     if (!selectedSlot) {
-      connection.release();
-      return res.status(400).json({ message: "The selected slot is no longer available" });
+      throw createHttpError(400, "The selected slot is no longer available");
     }
 
     const utcStartAt = dayjs(startAt).utc().format("YYYY-MM-DD HH:mm:ss");
@@ -193,13 +260,13 @@ export const createBooking = async (req, res, next) => {
     );
 
     if (existingMeetings.length > 0) {
-      connection.release();
-      return res.status(409).json({ message: "That time slot has already been booked." });
+      throw createHttpError(409, "That time slot has already been booked.");
     }
 
     await connection.beginTransaction();
     transactionStarted = true;
-    await connection.execute(
+
+    const [result] = await connection.execute(
       `INSERT INTO meetings (
         event_type_id,
         host_user_id,
@@ -213,34 +280,160 @@ export const createBooking = async (req, res, next) => {
       [
         data.eventType.id,
         1,
-        inviteeName,
-        inviteeEmail,
+        inviteeName.trim(),
+        inviteeEmail.trim(),
         inviteeNotes || null,
         utcStartAt,
         slotDate.add(data.eventType.durationMinutes, "minute").utc().format("YYYY-MM-DD HH:mm:ss")
       ],
     );
+
     await connection.commit();
-    connection.release();
 
     res.status(201).json({
+      meetingId: result.insertId,
       eventName: data.eventType.name,
       hostName: data.eventType.hostName,
       location: data.eventType.location,
       timezone: data.eventType.timezone,
-      inviteeName,
-      inviteeEmail,
+      inviteeName: inviteeName.trim(),
+      inviteeEmail: inviteeEmail.trim(),
       inviteeNotes: inviteeNotes || "",
-      startAt
+      slug,
+      startAt,
+      status: "scheduled"
     });
   } catch (error) {
     if (transactionStarted) {
       await connection.rollback();
     }
-    connection.release();
     if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({ message: "That time slot has already been booked." });
     }
     next(error);
+  } finally {
+    connection.release();
+  }
+};
+
+export const cancelPublicBooking = async (req, res, next) => {
+  try {
+    const result = await query(
+      `UPDATE meetings
+       SET status = 'cancelled', cancelled_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND status = 'scheduled'`,
+      [req.params.id],
+    );
+
+    if (result.affectedRows === 0) {
+      throw createHttpError(404, "Meeting not found or already cancelled.");
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reschedulePublicBooking = async (req, res, next) => {
+  const connection = await getConnection();
+  let transactionStarted = false;
+
+  try {
+    const meeting = await getMeetingDetails(req.params.id);
+
+    if (!meeting || meeting.status === "cancelled") {
+      throw createHttpError(404, "Booking not found.");
+    }
+
+    const { date, startAt, inviteeName, inviteeEmail, inviteeNotes } = req.body;
+    validateBookingInput({
+      slug: meeting.slug,
+      date,
+      startAt,
+      inviteeName: inviteeName || meeting.inviteeName,
+      inviteeEmail: inviteeEmail || meeting.inviteeEmail
+    });
+
+    const data = await getEventTypeWithAvailability(meeting.slug);
+
+    if (!data) {
+      throw createHttpError(404, "Event type not found");
+    }
+
+    const bookedSlots = await getBookedSlotsForDate(meeting.eventTypeId, date, meeting.id);
+    const validSlots = createSlotsForDate({
+      date,
+      timezone: data.eventType.timezone,
+      durationMinutes: data.eventType.durationMinutes,
+      availabilityRules: data.availabilityRules,
+      bookedSlots,
+      includePast: false
+    });
+    const selectedSlot = validSlots.find((slot) => slot.startAt === startAt);
+
+    if (!selectedSlot) {
+      throw createHttpError(400, "The selected slot is no longer available");
+    }
+
+    const utcStartAt = dayjs(startAt).utc().format("YYYY-MM-DD HH:mm:ss");
+    const [existingMeetings] = await connection.execute(
+      `SELECT id
+       FROM meetings
+       WHERE event_type_id = ?
+         AND start_at = ?
+         AND status <> 'cancelled'
+         AND id <> ?
+       LIMIT 1`,
+      [meeting.eventTypeId, utcStartAt, meeting.id],
+    );
+
+    if (existingMeetings.length > 0) {
+      throw createHttpError(409, "That time slot has already been booked.");
+    }
+
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    await connection.execute(
+      `UPDATE meetings
+       SET invitee_name = ?,
+           invitee_email = ?,
+           invitee_notes = ?,
+           start_at = ?,
+           end_at = ?,
+           cancelled_at = NULL
+       WHERE id = ?`,
+      [
+        (inviteeName || meeting.inviteeName).trim(),
+        (inviteeEmail || meeting.inviteeEmail).trim(),
+        inviteeNotes ?? meeting.inviteeNotes ?? null,
+        utcStartAt,
+        dayjs(startAt).tz(data.eventType.timezone).add(data.eventType.durationMinutes, "minute").utc().format("YYYY-MM-DD HH:mm:ss"),
+        meeting.id
+      ],
+    );
+
+    await connection.commit();
+
+    res.json({
+      ...buildBookingResponse(meeting, {
+        startAt,
+        status: "rescheduled"
+      }),
+      inviteeName: (inviteeName || meeting.inviteeName).trim(),
+      inviteeEmail: (inviteeEmail || meeting.inviteeEmail).trim(),
+      inviteeNotes: inviteeNotes ?? meeting.inviteeNotes ?? ""
+    });
+  } catch (error) {
+    if (transactionStarted) {
+      await connection.rollback();
+    }
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ message: "That time slot has already been booked." });
+    }
+    next(error);
+  } finally {
+    connection.release();
   }
 };

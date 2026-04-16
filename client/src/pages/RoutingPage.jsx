@@ -2,10 +2,7 @@ export default function RoutingPage() {
   return (
     <div className="page-stack">
       <section className="scheduling-header">
-        <div>
-          <h1>Routing</h1>
-          <p className="hero-copy">Basic routing rules page for directing invitees to the right meeting flow.</p>
-        </div>
+        <p className="hero-copy">Basic routing rules page for directing invitees to the right meeting flow.</p>
       </section>
 
       <section className="panel">
