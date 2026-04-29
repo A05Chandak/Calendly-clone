@@ -1,4 +1,4 @@
-# Calendly Clone
+# Schedura
 
 A full-stack scheduling platform built for the Scaler SDE Intern full-stack assignment using React, Node.js, Express, and MySQL.
 
